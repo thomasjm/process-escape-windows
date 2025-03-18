@@ -1,14 +1,19 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Main where
 
-import Control.Monad (when)
+import Control.Monad
+import Data.String.Interpolate
 import Foreign (withArray, peekArray, castPtr, nullPtr, peek, Ptr)
 import Foreign.C.Types (CInt(..))
 import Lib (escapeCreateProcessArg)
 import System.Win32.String (withTString, peekTString)
 import System.Win32.Types (LPWSTR, LPCWSTR, BOOL)
 import Test.QuickCheck
+import UnliftIO.Exception
+
 
 foreign import stdcall "Windows.h CommandLineToArgvW"
   c_CommandLineToArgvW :: LPCWSTR -> Ptr CInt -> IO (Ptr LPWSTR)
@@ -19,22 +24,12 @@ foreign import stdcall "Windows.h LocalFree"
 -- | Function to call Windows CommandLineToArgvW, using Win32 for UTF-16 conversion
 commandLineToArgvW :: String -> IO [String]
 commandLineToArgvW cmdLine = do
-  -- withTString handles the conversion from String to UTF-16 (LPCWSTR)
-  withTString cmdLine $ \cmdLineW -> do
-    withArray [(0 :: Int)] $ \pNumArgs -> do
-      argsPtr <- c_CommandLineToArgvW cmdLineW (castPtr pNumArgs)
+  withTString cmdLine $ \cmdLineW ->
+    withArray [(0 :: Int)] $ \pNumArgs ->
+    bracket (c_CommandLineToArgvW cmdLineW (castPtr pNumArgs)) (void . c_LocalFree) $ \argsPtr -> do
       when (argsPtr == nullPtr) $ error "CommandLineToArgvW failed"
-
       numArgs <- peek pNumArgs
-      args <- peekArray (fromIntegral numArgs) argsPtr
-
-      -- Convert UTF-16 strings back to Haskell Strings
-      result <- mapM peekTString args
-
-      -- Free the memory allocated by CommandLineToArgvW
-      _ <- c_LocalFree argsPtr
-
-      return result
+      peekArray numArgs argsPtr >>= mapM peekTString
 
 -- | Test a single argument
 testArgQuoting :: String -> Property
@@ -87,43 +82,38 @@ genTestString = do
 
 main :: IO ()
 main = do
-  putStrLn "Testing Windows command line argument quoting..."
+  putStrLn "Testing known edge cases:"
+  forM_ testCases $ \arg -> do
+    let quoted = "foo.exe " ++ escapeCreateProcessArg arg
+    commandLineToArgvW quoted >>= \case
+      ["foo.exe", x] | x == arg -> return ()
+      ["foo.exe", x] -> putStrLn [i|Failure: #{show arg} -> #{show quoted} -> #{show x}\n|]
+      xs -> putStrLn [i|Failure: unexpected parsed value: #{xs}|]
 
-  -- Test individual argument quoting
   putStrLn "Testing single argument quoting:"
   quickCheckWith (stdArgs {maxSuccess = 1000}) $
     forAll genTestString testArgQuoting
 
-  -- Test multiple arguments quoting
+  putStrLn "\n"
+
   putStrLn "Testing multiple arguments quoting:"
   quickCheckWith (stdArgs {maxSuccess = 1000}) $
     forAll (listOf1 genTestString) testArgsQuoting
 
-  -- Test specific edge cases
-  putStrLn "Testing known edge cases:"
-  let edgeCases = [
-        ""                          -- Empty string
-        , "simple"                  -- Simple string, no quoting needed
-        , "has space"               -- Contains spaces
-        , "has\"quote"              -- Contains quotes
-        , "\\"                      -- Single backslash
-        , "\\\\"                    -- Two backslashes
-        , "\\\""                    -- Backslash followed by quote
-        , "ends with \\"            -- Ends with backslash
-        , "\\arg with space"        -- Backslash at start with spaces
-        , "a\\\\b c"                -- Backslashes in middle with spaces
-        , "a\\\\\"b c"              -- Backslashes followed by quote
-        , "\"quoted already\""      -- Already quoted
-        , "with & special | chars"  -- With shell special chars
-        ]
 
-  mapM_ (\arg -> do
-      putStrLn $ "Testing: " ++ show arg
-      quoted <- return $ escapeCreateProcessArg arg
-      putStrLn $ "Quoted as: " ++ quoted
-      parsed <- commandLineToArgvW quoted
-      putStrLn $ "Parsed: " ++ show parsed
-      putStrLn $ "Result: " ++ if length parsed >= 1 && (if null parsed then True else last parsed == arg)
-                                then "PASS" else "FAIL"
-      putStrLn ""
-    ) edgeCases
+testCases :: [String]
+testCases = [
+  ""                          -- Empty string
+  , "simple"                  -- Simple string, no quoting needed
+  , "has space"               -- Contains spaces
+  , "has\"quote"              -- Contains quotes
+  , "\\"                      -- Single backslash
+  , "\\\\"                    -- Two backslashes
+  , "\\\""                    -- Backslash followed by quote
+  , "ends with \\"            -- Ends with backslash
+  , "\\arg with space"        -- Backslash at start with spaces
+  , "a\\\\b c"                -- Backslashes in middle with spaces
+  , "a\\\\\"b c"              -- Backslashes followed by quote
+  , "\"quoted already\""      -- Already quoted
+  , "with & special | chars"  -- With shell special chars
+  ]

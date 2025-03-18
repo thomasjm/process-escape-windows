@@ -59,4 +59,6 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - process-escape-windows
+    - string-interpolate
+    - unliftio
     - QuickCheck
