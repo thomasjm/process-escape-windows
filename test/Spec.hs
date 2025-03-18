@@ -31,31 +31,21 @@ commandLineToArgvW cmdLine = do
       numArgs <- peek pNumArgs
       peekArray numArgs argsPtr >>= mapM peekTString
 
--- | Test a single argument
-testArgQuoting :: String -> Property
-testArgQuoting arg = ioProperty $ do
-  -- Quote the argument
-  let quoted = escapeCreateProcessArg arg
+testFirstArgQuoting :: String -> Property
+testFirstArgQuoting arg = ioProperty $ do
+  let quoted = "foo.exe " ++ escapeCreateProcessArg arg
+  commandLineToArgvW quoted >>= \case
+    ["foo.exe", x] | x == arg -> return True
+    ["foo.exe", x] -> return False
+    _ -> return False
 
-  -- Call Windows API to parse it back
+testMultipleArgsQuoting :: [String] -> Property
+testMultipleArgsQuoting args = ioProperty $ do
+  let quoted = "foo.exe " ++ unwords (map escapeCreateProcessArg args)
   parsedArgs <- commandLineToArgvW quoted
-
-  -- Verify it's parsed correctly (accounting for program name in first position)
-  return $ length parsedArgs >= 1 &&
-          (if null parsedArgs then True else last parsedArgs == arg)
-
--- | Test multiple arguments combined
-testArgsQuoting :: [String] -> Property
-testArgsQuoting args = ioProperty $ do
-  -- Quote each argument and join with spaces
-  let quoted = unwords (map escapeCreateProcessArg args)
-
-  -- Call Windows API to parse it back
-  parsedArgs <- commandLineToArgvW quoted
-
-  -- Verify all arguments are parsed correctly, accounting for program name
-  return $ length parsedArgs == length args + 1 &&
-          drop 1 parsedArgs == args
+  commandLineToArgvW quoted >>= \case
+    ("foo.exe":xs) -> return (xs == args)
+    _ -> return False
 
 genTestString :: Gen String
 genTestString = do
@@ -92,13 +82,13 @@ main = do
 
   putStrLn "Testing single argument quoting:"
   quickCheckWith (stdArgs {maxSuccess = 1000}) $
-    forAll genTestString testArgQuoting
+    forAll genTestString testFirstArgQuoting
 
   putStrLn "\n"
 
   putStrLn "Testing multiple arguments quoting:"
   quickCheckWith (stdArgs {maxSuccess = 1000}) $
-    forAll (listOf1 genTestString) testArgsQuoting
+    forAll (listOf1 genTestString) testMultipleArgsQuoting
 
 
 testCases :: [String]
