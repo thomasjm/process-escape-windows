@@ -70,9 +70,14 @@ genTestString = do
         return (bs ++ "\""))
     ]
 
+validCommandString :: Gen String
+validCommandString = listOf validChar
+  where
+    validChar = arbitrary `suchThat` (/= '\NUL')
+
 main :: IO ()
 main = do
-  putStrLn "Testing known edge cases:"
+  putStrLn "Testing known edge cases"
   forM_ testCases $ \arg -> do
     let quoted = "foo.exe " ++ escapeCreateProcessArg arg
     commandLineToArgvW quoted >>= \case
@@ -80,16 +85,31 @@ main = do
       ["foo.exe", x] -> putStrLn [i|Failure: #{show arg} -> #{show quoted} -> #{show x}\n|]
       xs -> putStrLn [i|Failure: unexpected parsed value: #{xs}|]
 
-  putStrLn "Testing single argument quoting:"
-  quickCheckWith (stdArgs {maxSuccess = 1000}) $
+  putStrLn "\n"
+
+  let n = 10000
+
+  putStrLn "Testing single argument quoting"
+  quickCheckWith (stdArgs {maxSuccess = n}) $
     forAll genTestString testFirstArgQuoting
 
   putStrLn "\n"
 
   putStrLn "Testing multiple arguments quoting:"
-  quickCheckWith (stdArgs {maxSuccess = 1000}) $
+  quickCheckWith (stdArgs {maxSuccess = n}) $
     forAll (listOf1 genTestString) testMultipleArgsQuoting
 
+  putStrLn "\n"
+
+  putStrLn "Running full QuickCheck for first arg"
+  quickCheckWith (stdArgs {maxSuccess = n}) $
+    forAll validCommandString testFirstArgQuoting
+
+  putStrLn "\n"
+
+  putStrLn "Running full QuickCheck for multi arg"
+  quickCheckWith (stdArgs {maxSuccess = n}) $
+    forAll (listOf1 validCommandString) testMultipleArgsQuoting
 
 testCases :: [String]
 testCases = [
