@@ -22,16 +22,24 @@ tests = do
         ["foo.exe", x] -> expectationFailure [i|Failure: #{show arg} -> #{show quoted} -> #{show x}\n|]
         xs -> expectationFailure [i|Failure: unexpected parsed value: #{xs}|]
 
-
   introduceQuickCheck' (stdArgs { maxSuccess = 10000 }) $ do
-    describe "Test strings (weighted towards special chars, backslashes, quotes)" $ do
-      prop "single argument" $ forAll genTestString testFirstArgQuoting
-      prop "multi argument" $ forAll (listOf1 genTestString) testMultipleArgsQuoting
+    describe "With fixed executable name (foo.exe)" $ do
+      describe "Test strings (weighted towards special chars, backslashes, quotes)" $ do
+        prop "single argument" $ forAll genTestString firstArgQuoteWorks
+        prop "multi argument" $ forAll (listOf1 genTestString) multipleArgQuoteWorks
 
-    describe "Arbitrary strings" $ do
-      prop "single argument" $ forAll stringWithoutNulls testFirstArgQuoting
-      prop "multi argument" $ forAll (listOf1 stringWithoutNulls) testMultipleArgsQuoting
+      describe "Arbitrary strings" $ do
+        prop "single argument" $ forAll stringWithoutNulls firstArgQuoteWorks
+        prop "multi argument" $ forAll (listOf1 stringWithoutNulls) multipleArgQuoteWorks
 
+    describe "With random executable name" $ do
+      describe "Test strings (weighted towards special chars, backslashes, quotes)" $ do
+        prop "Executable only" $ forAll genTestString executableQuoteWorks
+        prop "Executable + args" $ forAll (listOf1 genTestString) executablePlusArgsQuoteWorks
+
+      describe "Arbitrary strings" $ do
+        prop "Executable only" $ forAll stringWithoutNulls executableQuoteWorks
+        prop "Executable + args" $ forAll (listOf1 stringWithoutNulls) executablePlusArgsQuoteWorks
 
 testCases :: [String]
 testCases = [
