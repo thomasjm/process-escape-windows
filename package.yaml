@@ -1,6 +1,6 @@
 name:                process-escape-windows
 version:             0.1.0.0
-github:              "githubuser/process-escape-windows"
+github:              "thomasjm/process-escape-windows"
 license:             BSD-3-Clause
 author:              "Tom McLaughlin"
 maintainer:          "tom@codedown.io"
@@ -31,17 +31,6 @@ default-extensions:
 library:
   source-dirs: src
 
-executables:
-  process-escape-windows-exe:
-    main:                Main.hs
-    source-dirs:         app
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - process-escape-windows
-
 tests:
   tests:
     main:                Spec.hs
@@ -55,6 +44,7 @@ tests:
     dependencies:
     - process-escape-windows
     - sandwich
+    - sandwich-quickcheck
     - string-interpolate
     - unliftio
     - QuickCheck

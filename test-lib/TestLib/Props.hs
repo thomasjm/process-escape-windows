@@ -6,7 +6,7 @@ module TestLib.Props (
   , testFirstArgQuoting
   , testMultipleArgsQuoting
 
-  , validCommandString
+  , stringWithoutNulls
   ) where
 
 import Control.Monad
@@ -50,7 +50,7 @@ testMultipleArgsQuoting args = ioProperty $ do
     ("foo.exe":xs) -> return (xs == args)
     _ -> return False
 
-validCommandString :: Gen String
-validCommandString = listOf validChar
+stringWithoutNulls :: Gen String
+stringWithoutNulls = listOf validChar
   where
     validChar = arbitrary `suchThat` (/= '\NUL')
