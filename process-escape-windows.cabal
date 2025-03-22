@@ -6,12 +6,10 @@ cabal-version: 2.2
 
 name:           process-escape-windows
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/process-escape-windows#readme>
 homepage:       https://github.com/githubuser/process-escape-windows#readme
 bug-reports:    https://github.com/githubuser/process-escape-windows/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2025 Author name here
+author:         Tom McLaughlin
+maintainer:     tom@codedown.io
 license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
@@ -32,6 +30,9 @@ library
       Paths_process_escape_windows
   hs-source-dirs:
       src
+  default-extensions:
+      LambdaCase
+      QuasiQuotes
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       Win32
@@ -46,6 +47,9 @@ executable process-escape-windows-exe
       Paths_process_escape_windows
   hs-source-dirs:
       app
+  default-extensions:
+      LambdaCase
+      QuasiQuotes
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Win32
@@ -53,21 +57,28 @@ executable process-escape-windows-exe
     , process-escape-windows
   default-language: Haskell2010
 
-test-suite process-escape-windows-test
+test-suite tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      TestLib.Gen
+      TestLib.Props
       Paths_process_escape_windows
   autogen-modules:
       Paths_process_escape_windows
   hs-source-dirs:
       test
+      test-lib
+  default-extensions:
+      LambdaCase
+      QuasiQuotes
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
     , Win32
     , base >=4.7 && <5
     , process-escape-windows
+    , sandwich
     , string-interpolate
     , unliftio
   default-language: Haskell2010
