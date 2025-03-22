@@ -25,21 +25,21 @@ tests = do
   introduceQuickCheck' (stdArgs { maxSuccess = 10000 }) $ do
     describe "With fixed executable name (foo.exe)" $ do
       describe "Test strings (weighted towards special chars, backslashes, quotes)" $ do
-        prop "single argument" $ forAll genTestString firstArgQuoteWorks
-        prop "multi argument" $ forAll (listOf1 genTestString) multipleArgQuoteWorks
+        prop "single argument" $ forAll genTestString (\x -> executableAndArgsWork "foo.exe" [x])
+        prop "multi argument" $ forAll (listOf1 genTestString) (\xs -> executableAndArgsWork "foo.exe" xs)
 
       describe "Arbitrary strings" $ do
-        prop "single argument" $ forAll stringWithoutNulls firstArgQuoteWorks
-        prop "multi argument" $ forAll (listOf1 stringWithoutNulls) multipleArgQuoteWorks
+        prop "single argument" $ forAll stringWithoutNulls (\x -> executableAndArgsWork "foo.exe" [x])
+        prop "multi argument" $ forAll (listOf1 stringWithoutNulls) (\xs -> executableAndArgsWork "foo.exe" xs)
 
     describe "With random executable name" $ do
       describe "Test strings (weighted towards special chars, backslashes, quotes)" $ do
-        prop "Executable only" $ forAll genTestString executableQuoteWorks
-        prop "Executable + args" $ forAll (listOf1 genTestString) executablePlusArgsQuoteWorks
+        prop "Executable only" $ forAll genTestString (\x -> executableAndArgsWork x [])
+        prop "Executable + args" $ forAll (listOf1 genTestString) (\(x:xs) -> executableAndArgsWork x xs)
 
       describe "Arbitrary strings" $ do
-        prop "Executable only" $ forAll stringWithoutNulls executableQuoteWorks
-        prop "Executable + args" $ forAll (listOf1 stringWithoutNulls) executablePlusArgsQuoteWorks
+        prop "Executable only" $ forAll stringWithoutNulls (\x -> executableAndArgsWork x [])
+        prop "Executable + args" $ forAll (listOf1 stringWithoutNulls) (\(x:xs) -> executableAndArgsWork x xs)
 
 testCases :: [String]
 testCases = [

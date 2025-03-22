@@ -3,11 +3,7 @@
 module TestLib.Props (
   commandLineToArgvW
 
-  , firstArgQuoteWorks
-  , multipleArgQuoteWorks
-
-  , executableQuoteWorks
-  , executablePlusArgsQuoteWorks
+  , executableAndArgsWork
 
   , stringWithoutNulls
   ) where
@@ -38,31 +34,12 @@ commandLineToArgvW cmdLine = do
       numArgs <- peek pNumArgs
       peekArray numArgs argsPtr >>= mapM peekTString
 
-firstArgQuoteWorks :: String -> Property
-firstArgQuoteWorks arg = ioProperty $ do
-  let quoted = "foo.exe " ++ escapeCreateProcessArg arg
+executableAndArgsWork :: String -> [String] -> Property
+executableAndArgsWork executable args = ioProperty $ do
+  let quoted = unwords $ fmap escapeCreateProcessArg (executable : args)
   commandLineToArgvW quoted >>= \case
-    ["foo.exe", x] | x == arg -> return True
+    (exe:rest) | exe == executable && rest == args -> return True
     _ -> return False
-
-executableQuoteWorks :: String -> Property
-executableQuoteWorks arg = ioProperty $ do
-  let quoted = escapeCreateProcessArg arg
-  commandLineToArgvW quoted >>= \case
-    [x] | x == arg -> return True
-    _ -> return False
-
-multipleArgQuoteWorks :: [String] -> Property
-multipleArgQuoteWorks args = ioProperty $ do
-  let quoted = "foo.exe " ++ unwords (map escapeCreateProcessArg args)
-  commandLineToArgvW quoted >>= \case
-    ("foo.exe":xs) -> return (xs == args)
-    _ -> return False
-
-executablePlusArgsQuoteWorks :: [String] -> Property
-executablePlusArgsQuoteWorks args = ioProperty $ do
-  let quoted = unwords (map escapeCreateProcessArg args)
-  (== args) <$> commandLineToArgvW quoted
 
 stringWithoutNulls :: Gen String
 stringWithoutNulls = listOf validChar
