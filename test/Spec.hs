@@ -1,10 +1,11 @@
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
  module Main (main) where
 
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.String.Interpolate
-import Lib (escapeCreateProcessArg)
+import Lib (escapeCreateProcessArg0, escapeCreateProcessArg)
 import Test.QuickCheck
 import Test.Sandwich
 import Test.Sandwich.QuickCheck
@@ -14,13 +15,24 @@ import TestLib.Props
 
 tests :: TopSpec
 tests = do
-  it "basic cases" $ do
-    forM_ testCases $ \arg -> do
-      let quoted = "foo.exe " ++ escapeCreateProcessArg arg
-      liftIO (commandLineToArgvW quoted) >>= \case
-        ["foo.exe", x] | x == arg -> return ()
-        ["foo.exe", x] -> expectationFailure [i|Failure: #{show arg} -> #{show quoted} -> #{show x}\n|]
-        xs -> expectationFailure [i|Failure: unexpected parsed value: #{xs}|]
+  describe "escapeCreateProcessArg0" $ do
+    forM_ testArg0Cases $ \arg -> do
+      it arg $ do
+        let quoted = escapeCreateProcessArg0 arg
+        liftIO (commandLineToArgvW quoted) >>= \case
+          [x]
+            | x == arg -> return ()
+            | otherwise -> expectationFailure [i|Failure: #{show arg} -> #{show quoted} -> #{show x}\n|]
+          xs -> expectationFailure [i|Failure: unexpected parsed value: #{xs}|]
+
+  describe "escapeCreateProcessArg cases" $ do
+    forM_ testArgCases $ \arg -> do
+      it arg $ do
+        let quoted = "foo.exe " ++ escapeCreateProcessArg arg
+        liftIO (commandLineToArgvW quoted) >>= \case
+          ["foo.exe", x] | x == arg -> return ()
+          ["foo.exe", x] -> expectationFailure [i|Failure: #{show arg} -> #{show quoted} -> #{show x}\n|]
+          xs -> expectationFailure [i|Failure: unexpected parsed value: #{xs}|]
 
   introduceQuickCheck' (stdArgs { maxSuccess = 10000 }) $ do
     describe "With fixed executable name (foo.exe)" $ do
@@ -41,8 +53,16 @@ tests = do
         prop "Executable only" $ forAll stringWithoutNulls (\x -> executableAndArgsWork x [])
         prop "Executable + args" $ forAll (listOf1 stringWithoutNulls) (\(x:xs) -> executableAndArgsWork x xs)
 
-testCases :: [String]
-testCases = [
+testArg0Cases :: [String]
+testArg0Cases = [
+  -- ""                          -- Empty string (disabled since this causes commandLineToArgvW to return the current process name)
+  -- , " "                       -- Single space
+  [i|\\"|]                       -- Single backslash plus quote
+  , [i| >f' "|]
+  ]
+
+testArgCases :: [String]
+testArgCases = [
   ""                          -- Empty string
   , "simple"                  -- Simple string, no quoting needed
   , "has space"               -- Contains spaces

@@ -1,8 +1,21 @@
 module Lib (
-  escapeCreateProcessArg
+  escapeCmdAndArgs
+  , escapeCreateProcessArg0
+  , escapeCreateProcessArg
   ) where
 
--- | Escape/quote a single argument for Windows CreateProcess
+escapeCmdAndArgs :: String -> [String] -> String
+escapeCmdAndArgs exe args = unwords (escapeCreateProcessArg0 exe : fmap escapeCreateProcessArg args)
+
+escapeCreateProcessArg0 :: String -> String
+escapeCreateProcessArg0 exe
+  | not (hasSpaces exe) = exe
+  | otherwise = exe -- TODO
+  where
+    hasSpaces = any (== ' ')
+
+-- | Escape a single argument for Windows CreateProcess
+-- (Not the first argument! For argv[0], see 'escapeCreateProcessArg0'.)
 --
 -- This follows the escaping rules described in Microsoft's documentation:
 -- https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw

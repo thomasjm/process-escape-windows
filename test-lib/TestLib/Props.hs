@@ -11,7 +11,7 @@ module TestLib.Props (
 import Control.Monad
 import Foreign (withArray, peekArray, castPtr, nullPtr, peek, Ptr)
 import Foreign.C.Types (CInt(..))
-import Lib (escapeCreateProcessArg)
+import Lib (escapeCmdAndArgs)
 import System.Win32.String (withTString, peekTString)
 import System.Win32.Types (LPWSTR, LPCWSTR)
 import Test.QuickCheck
@@ -36,7 +36,7 @@ commandLineToArgvW cmdLine = do
 
 executableAndArgsWork :: String -> [String] -> Property
 executableAndArgsWork executable args = ioProperty $ do
-  let quoted = unwords $ fmap escapeCreateProcessArg (executable : args)
+  let quoted = escapeCmdAndArgs executable args
   commandLineToArgvW quoted >>= \case
     (exe:rest) | exe == executable && rest == args -> return True
     _ -> return False
