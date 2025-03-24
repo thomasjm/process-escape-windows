@@ -7,14 +7,32 @@ module Lib (
 escapeCmdAndArgs :: String -> [String] -> String
 escapeCmdAndArgs exe args = unwords (escapeCreateProcessArg0 exe : fmap escapeCreateProcessArg args)
 
+-- | Escape the *first* argument for Windows CreateProcess.
+-- For subsequent arguments, see 'escapeCreateProcessArg'.
+--
+-- This follows the escaping rules described in Microsoft's documentation:
+-- https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw
 escapeCreateProcessArg0 :: String -> String
 escapeCreateProcessArg0 exe
-  | not (hasSpaces exe) = exe
-  | otherwise = exe -- TODO
+  | not (needsQuoting exe) = exe
+  | otherwise = "\"" ++ escapeContents exe ++ "\""
   where
-    hasSpaces = any (== ' ')
+    needsQuoting = any (`elem` " \t")
 
--- | Escape a single argument for Windows CreateProcess
+    escapeContents [] = []
+    escapeContents (c:cs)
+      | c == '"'  = "\\\"" ++ escapeContents cs
+      | c == '\\' = handleBackslashes 1 cs
+      | otherwise = c : escapeContents cs
+
+    handleBackslashes count [] = replicate count '\\'
+    handleBackslashes count (c:cs)
+      | c == '\\' = handleBackslashes (count + 1) cs
+      | c == '"'  = replicate (count * 2) '\\' ++ "\\\"" ++ escapeContents cs
+      | otherwise = replicate count '\\' ++ c : escapeContents cs
+
+
+-- | Escape a single argument for Windows CreateProcess.
 -- (Not the first argument! For argv[0], see 'escapeCreateProcessArg0'.)
 --
 -- This follows the escaping rules described in Microsoft's documentation:

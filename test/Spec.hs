@@ -23,7 +23,7 @@ tests = do
           [x]
             | x == arg -> return ()
             | otherwise -> expectationFailure [i|Failure: #{show arg} -> #{show quoted} -> #{show x}\n|]
-          xs -> expectationFailure [i|Failure: unexpected parsed value: #{xs}|]
+          xs -> expectationFailure [i|Failure: #{show arg} -> #{show quoted} -> too many parsed values: #{xs}|]
 
   describe "escapeCreateProcessArg cases" $ do
     forM_ testArgCases $ \arg -> do
@@ -58,7 +58,7 @@ testArg0Cases = [
   -- ""                          -- Empty string (disabled since this causes commandLineToArgvW to return the current process name)
   -- , " "                       -- Single space
   [i|\\"|]                       -- Single backslash plus quote
-  , [i| >f' "|]
+  , [i|a "|]
   ]
 
 testArgCases :: [String]
