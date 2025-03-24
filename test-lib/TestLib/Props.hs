@@ -6,9 +6,11 @@ module TestLib.Props (
   , executableAndArgsWork
 
   , stringWithoutNulls
+  , stringWithoutInvalidWindowsPathChars
   ) where
 
 import Control.Monad
+import Data.Char (ord)
 import Foreign (withArray, peekArray, castPtr, nullPtr, peek, Ptr)
 import Foreign.C.Types (CInt(..))
 import Lib (escapeCmdAndArgs)
@@ -45,3 +47,13 @@ stringWithoutNulls :: Gen String
 stringWithoutNulls = listOf validChar
   where
     validChar = arbitrary `suchThat` (/= '\NUL')
+
+stringWithoutInvalidWindowsPathChars :: Gen String
+stringWithoutInvalidWindowsPathChars = listOf1 validChar
+  where
+    validChar = arbitrary `suchThat` (not . isWindowsForbiddenPathChar)
+
+    isWindowsForbiddenPathChar :: Char -> Bool
+    isWindowsForbiddenPathChar x =
+      x `elem` ['<', '>', ':', '"', '/', '\\', '|', '?', '*'] -- printable
+      || (ord x >= 0 && ord x <= 31) -- non-printable

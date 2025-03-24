@@ -4,33 +4,27 @@ module Lib (
   , escapeCreateProcessArg
   ) where
 
+
 escapeCmdAndArgs :: String -> [String] -> String
 escapeCmdAndArgs exe args = unwords (escapeCreateProcessArg0 exe : fmap escapeCreateProcessArg args)
 
 -- | Escape the *first* argument for Windows CreateProcess.
 -- For subsequent arguments, see 'escapeCreateProcessArg'.
 --
--- This follows the escaping rules described in Microsoft's documentation:
--- https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw
+-- The first argument is parsed differently than subsequent arguments. It must be a valid
+-- Windows path. To ensure it's escaped properly, we do two things:
+-- a) Strip out quotes from the path, since quotes are forbidden in Windows paths
+--    (see https://stackoverflow.com/a/31976060)
+-- b) If the resulting string contains any whitespace, wrap it in double quotes. Otherwise,
+--    leave it as-is.
 escapeCreateProcessArg0 :: String -> String
 escapeCreateProcessArg0 exe
-  | not (needsQuoting exe) = exe
-  | otherwise = "\"" ++ escapeContents exe ++ "\""
+  | not (hasWhitespace exe) = exeWithoutForbiddenChars
+  | otherwise = "\"" ++ exeWithoutForbiddenChars ++ "\""
   where
-    needsQuoting = any (`elem` " \t")
+    exeWithoutForbiddenChars = filter (not . (== '"')) exe
 
-    escapeContents [] = []
-    escapeContents (c:cs)
-      | c == '"'  = "\\\"" ++ escapeContents cs
-      | c == '\\' = handleBackslashes 1 cs
-      | otherwise = c : escapeContents cs
-
-    handleBackslashes count [] = replicate count '\\'
-    handleBackslashes count (c:cs)
-      | c == '\\' = handleBackslashes (count + 1) cs
-      | c == '"'  = replicate (count * 2) '\\' ++ "\\\"" ++ escapeContents cs
-      | otherwise = replicate count '\\' ++ c : escapeContents cs
-
+    hasWhitespace = any (`elem` " \t")
 
 -- | Escape a single argument for Windows CreateProcess.
 -- (Not the first argument! For argv[0], see 'escapeCreateProcessArg0'.)

@@ -16,6 +16,13 @@ import TestLib.Props
 tests :: TopSpec
 tests = do
   describe "escapeCreateProcessArg0" $ do
+    let testArg0Cases :: [String]
+        testArg0Cases = [
+          -- ""
+          -- , " "
+          [i|C:\\Program Files\\Foo\\bar.txt|]
+          ]
+
     forM_ testArg0Cases $ \arg -> do
       it arg $ do
         let quoted = escapeCreateProcessArg0 arg
@@ -26,6 +33,23 @@ tests = do
           xs -> expectationFailure [i|Failure: #{show arg} -> #{show quoted} -> too many parsed values: #{xs}|]
 
   describe "escapeCreateProcessArg cases" $ do
+    let testArgCases :: [String]
+        testArgCases = [
+          ""                          -- Empty string
+          , "simple"                  -- Simple string, no quoting needed
+          , "has space"               -- Contains spaces
+          , "has\"quote"              -- Contains quotes
+          , "\\"                      -- Single backslash
+          , "\\\\"                    -- Two backslashes
+          , "\\\""                    -- Backslash followed by quote
+          , "ends with \\"            -- Ends with backslash
+          , "\\arg with space"        -- Backslash at start with spaces
+          , "a\\\\b c"                -- Backslashes in middle with spaces
+          , "a\\\\\"b c"              -- Backslashes followed by quote
+          , "\"quoted already\""      -- Already quoted
+          , "with & special | chars"  -- With shell special chars
+          ]
+
     forM_ testArgCases $ \arg -> do
       it arg $ do
         let quoted = "foo.exe " ++ escapeCreateProcessArg arg
@@ -45,38 +69,16 @@ tests = do
         prop "multi argument" $ forAll (listOf1 stringWithoutNulls) (\xs -> executableAndArgsWork "foo.exe" xs)
 
     describe "With random executable name" $ do
-      describe "Test strings (weighted towards special chars, backslashes, quotes)" $ do
-        prop "Executable only" $ forAll genTestString (\x -> executableAndArgsWork x [])
-        prop "Executable + args" $ forAll (listOf1 genTestString) (\(x:xs) -> executableAndArgsWork x xs)
+      prop "Executable only (strings without forbidden path chars)" $ forAll stringWithoutInvalidWindowsPathChars (\x -> executableAndArgsWork x [])
 
-      describe "Arbitrary strings" $ do
-        prop "Executable only" $ forAll stringWithoutNulls (\x -> executableAndArgsWork x [])
-        prop "Executable + args" $ forAll (listOf1 stringWithoutNulls) (\(x:xs) -> executableAndArgsWork x xs)
+      prop "Executable + test string args (weighted towards special chars, backslashes, quotes)" $ forAll stringWithoutInvalidWindowsPathChars $ \exe ->
+        forAll (listOf1 genTestString) $ \args ->
+          executableAndArgsWork exe args
 
-testArg0Cases :: [String]
-testArg0Cases = [
-  -- ""                          -- Empty string (disabled since this causes commandLineToArgvW to return the current process name)
-  -- , " "                       -- Single space
-  [i|\\"|]                       -- Single backslash plus quote
-  , [i|a "|]
-  ]
+      prop "Executable + arbitrary args" $ forAll stringWithoutInvalidWindowsPathChars $ \exe ->
+        forAll (listOf1 stringWithoutInvalidWindowsPathChars) $ \args ->
+          executableAndArgsWork exe args
 
-testArgCases :: [String]
-testArgCases = [
-  ""                          -- Empty string
-  , "simple"                  -- Simple string, no quoting needed
-  , "has space"               -- Contains spaces
-  , "has\"quote"              -- Contains quotes
-  , "\\"                      -- Single backslash
-  , "\\\\"                    -- Two backslashes
-  , "\\\""                    -- Backslash followed by quote
-  , "ends with \\"            -- Ends with backslash
-  , "\\arg with space"        -- Backslash at start with spaces
-  , "a\\\\b c"                -- Backslashes in middle with spaces
-  , "a\\\\\"b c"              -- Backslashes followed by quote
-  , "\"quoted already\""      -- Already quoted
-  , "with & special | chars"  -- With shell special chars
-  ]
 
 main :: IO ()
 main = runSandwichWithCommandLineArgs defaultOptions tests
