@@ -72,7 +72,7 @@ runTests ioCheck propCheck = do
           ]
 
     forM_ testArgCases $ \arg -> do
-      liftIO $ executableAndArgsWork' "foo.exe" [arg]
+      liftIO $ ioCheck [arg]
 
   it "multi arg cases" $ do
     liftIO $ ioCheck ["a", "b"]
