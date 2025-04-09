@@ -5,14 +5,19 @@ module TestLib.Props (
   commandLineToArgvW
 
   , executableAndArgsWork
+  , executableAndArgsWork'
 
   , stringWithoutNulls
   , stringWithoutInvalidWindowsPathChars
 
-  , argsWorkUsingCmd
-  , argsWorkUsingCmd'
+  , argsWorkUsingCmdExeWithCProgram
+  , argsWorkUsingCmdExeWithCProgram'
+
+  , argsWorkUsingCmdExeWithBatchFile
+  , argsWorkUsingCmdExeWithBatchFile'
 
   , executableAndArgsWorkUsingOldFunction
+  , executableAndArgsWorkUsingOldFunction'
   ) where
 
 import Control.Monad
@@ -51,12 +56,15 @@ commandLineToArgvW cmdLine = do
       numArgs <- peek pNumArgs
       peekArray numArgs argsPtr >>= mapM peekTString
 
-executableAndArgsWork :: String -> [String] -> Property
-executableAndArgsWork executable args = ioProperty $ do
+executableAndArgsWork' :: String -> [String] -> IO ()
+executableAndArgsWork' executable args = do
   let quoted = escapeCmdAndArgs executable args
   commandLineToArgvW quoted >>= \case
-    (exe:rest) | exe == executable && rest == args -> return True
-    _ -> return False
+    (exe:rest) | exe == executable && rest == args -> return ()
+    xs -> expectationFailure [i|#{executable} #{args} -> #{quoted} -> #{xs}|]
+
+executableAndArgsWork :: String -> [String] -> Property
+executableAndArgsWork executable args = ioProperty $ executableAndArgsWork' executable args
 
 stringWithoutNulls :: Gen String
 stringWithoutNulls = listOf validChar
@@ -73,16 +81,25 @@ stringWithoutInvalidWindowsPathChars = listOf1 validChar
       x `elem` ['<', '>', ':', '"', '/', '\\', '|', '?', '*'] -- printable
       || (ord x >= 0 && ord x <= 31) -- non-printable
 
-argsWorkUsingCmd :: [String] -> Property
-argsWorkUsingCmd = ioProperty . argsWorkUsingCmd'
+argsWorkUsingCmdExeWithCProgram :: [String] -> Property
+argsWorkUsingCmdExeWithCProgram = ioProperty . argsWorkUsingCmdExeWithCProgram'
 
-argsWorkUsingCmd' :: [String] -> IO ()
-argsWorkUsingCmd' args = do
+argsWorkUsingCmdExeWithCProgram' :: [String] -> IO ()
+argsWorkUsingCmdExeWithCProgram' = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.exe") escapeCreateProcessArgForCmdWithCProgram
+
+argsWorkUsingCmdExeWithBatchFile :: [String] -> Property
+argsWorkUsingCmdExeWithBatchFile = ioProperty . argsWorkUsingCmdExeWithBatchFile'
+
+argsWorkUsingCmdExeWithBatchFile' :: [String] -> IO ()
+argsWorkUsingCmdExeWithBatchFile' = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.bat") escapeCreateProcessArgForCmdWithBatchFile
+
+argsWorkUsingCmd'' :: (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
+argsWorkUsingCmd'' getChildExe escapeArg args = do
   cwd <- getCurrentDirectory
-  let testBat = cwd </> "test-assets" </> "test-multi.bat"
-  doesFileExist testBat >>= (`shouldBe` True)
+  let childExe = getChildExe cwd
+  doesFileExist childExe >>= (`shouldBe` True)
 
-  (exitCode, sout, serr) <- readCreateProcessWithExitCode (shell (L.unwords (testBat : fmap escapeCreateProcessArgForCmd args))) ""
+  (exitCode, sout, serr) <- readCreateProcessWithExitCode (shell (L.unwords (childExe : fmap escapeArg args))) ""
   case exitCode of
     ExitSuccess -> return ()
     ExitFailure n -> expectationFailure [i|Process exited with code #{n}. Stdout: #{sout}. Stderr: #{serr}.|]
@@ -96,12 +113,12 @@ argsWorkUsingCmd' args = do
 
 -- * Old version in System.Process
 
-executableAndArgsWorkUsingOldFunction :: String -> [String] -> Property
-executableAndArgsWorkUsingOldFunction executable args = ioProperty $ do
+executableAndArgsWorkUsingOldFunction' :: String -> [String] -> IO ()
+executableAndArgsWorkUsingOldFunction' executable args = do
   let quoted = unwords (escapeCreateProcessArg0 executable : fmap translateInternal args)
   commandLineToArgvW quoted >>= \case
-    (exe:rest) | exe == executable && rest == args -> return True
-    _ -> return False
+    (exe:rest) | exe == executable && rest == args -> return ()
+    xs -> expectationFailure [i|#{executable} #{args} -> #{quoted} -> #{xs}|]
   where
     -- | This is the old version in System.Process, as of 23c54d7c0a3dc3e6e3da6b427f2ba332cb9bae71
     translateInternal :: String -> String
@@ -110,6 +127,9 @@ executableAndArgsWorkUsingOldFunction executable args = ioProperty $ do
             escape '\\' (True,  str) = (True,  '\\' : '\\' : str)
             escape '\\' (False, str) = (False, '\\' : str)
             escape c    (_,     str) = (False, c : str)
+
+executableAndArgsWorkUsingOldFunction :: String -> [String] -> Property
+executableAndArgsWorkUsingOldFunction executable args = ioProperty $ executableAndArgsWorkUsingOldFunction' executable args
 
 -- * Util
 

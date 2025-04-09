@@ -1,7 +1,8 @@
 module Lib (
   escapeCreateProcessArg0
   , escapeCreateProcessArg
-  , escapeCreateProcessArgForCmd
+  , escapeCreateProcessArgForCmdWithCProgram
+  , escapeCreateProcessArgForCmdWithBatchFile
   ) where
 
 
@@ -64,43 +65,30 @@ escapeCreateProcessArg arg
 --
 -- https://flatt.tech/research/posts/batbadbut-you-cant-securely-execute-commands-on-windows/
 -- https://github.com/haskell/security-advisories/blob/0ca84023348231a44fac0ee943cca5437ef711a5/advisories/hackage/process/HSEC-2024-0003.md
+-- https://learn.microsoft.com/en-us/archive/blogs/twistylittlepassagesallalike/everyone-quotes-command-line-arguments-the-wrong-way
 --
 -- The code below follows the escaping algorithm described in the first link.
-escapeCreateProcessArgForCmd :: String -> String
-escapeCreateProcessArgForCmd arg = escape $ escapeCreateProcessArg arg
+escapeCreateProcessArgForCmdWithCProgram :: String -> String
+escapeCreateProcessArgForCmdWithCProgram = escapeForCmd . escapeCreateProcessArg
+
+
+escapeCreateProcessArgForCmdWithBatchFile :: String -> String
+escapeCreateProcessArgForCmdWithBatchFile = doubleQuote . escapeForCmd
   where
-    escape ('(':xs) = '^' : '(' : escape xs
-    escape (')':xs) = '^' : ')' : escape xs
-    escape ('%':xs) = '^' : '%' : escape xs
-    escape ('!':xs) = '^' : '!' : escape xs
-    escape ('^':xs) = '^' : '^' : escape xs
-    escape ('"':xs) = '^' : '"' : escape xs
-    escape ('<':xs) = '^' : '<' : escape xs
-    escape ('>':xs) = '^' : '>' : escape xs
-    escape ('&':xs) = '^' : '&' : escape xs
-    escape ('|':xs) = '^' : '|' : escape xs
-    escape (x:xs) = x : escape xs
-    escape [] = []
+    doubleQuote s = "\"" <> s <> "\""
 
-  -- | not (needsQuoting arg) = arg
-  -- | otherwise = "\"" ++ escape arg ++ "\""
-  -- where
-  --   -- Check if an argument needs quoting
-  --   needsQuoting :: String -> Bool
-  --   needsQuoting s = null s || any (`elem` specialChars) s
-
-  --   specialChars :: [Char]
-  --   specialChars = [' ', '\t', '"', '\'', '(', ')', '<', '>', '&', '|', '^', '%']
-
-  --   escape :: String -> String
-  --   -- Replace percent sign (%) with %%cd:~,%.
-  --   escape ('%':xs) = "%%cd:~,%" ++ escape xs
-  --   -- Replace the backslash (\) in front of the double quote (") with two backslashes (\\).
-  --   escape ('\\':xs@('"':_)) = '\\' : '\\' : escape xs
-  --   -- Replace the double quote (") with two double quotes ("").
-  --   escape ('"':xs) = '"' : '"' : escape xs
-  --   -- Remove newline characters (\n).
-  --   escape ('\n':xs) = escape xs
-  --   -- All other characters are passed through normally
-  --   escape (c:xs) = c : escape xs
-  --   escape [] = []
+escapeForCmd :: String -> String
+escapeForCmd = go
+  where
+    go ('(':xs) = '^' : '(' : go xs
+    go (')':xs) = '^' : ')' : go xs
+    go ('%':xs) = '^' : '%' : go xs
+    go ('!':xs) = '^' : '!' : go xs
+    go ('^':xs) = '^' : '^' : go xs
+    go ('"':xs) = '^' : '"' : go xs
+    go ('<':xs) = '^' : '<' : go xs
+    go ('>':xs) = '^' : '>' : go xs
+    go ('&':xs) = '^' : '&' : go xs
+    go ('|':xs) = '^' : '|' : go xs
+    go (x:xs) = x : go xs
+    go [] = []
