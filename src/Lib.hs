@@ -1,12 +1,9 @@
 module Lib (
-  escapeCmdAndArgs
-  , escapeCreateProcessArg0
+  escapeCreateProcessArg0
   , escapeCreateProcessArg
+  , escapeCreateProcessArgForCmd
   ) where
 
-
-escapeCmdAndArgs :: String -> [String] -> String
-escapeCmdAndArgs exe args = unwords (escapeCreateProcessArg0 exe : fmap escapeCreateProcessArg args)
 
 -- | Escape the *first* argument for Windows CreateProcess.
 -- For subsequent arguments, see 'escapeCreateProcessArg'.
@@ -61,3 +58,49 @@ escapeCreateProcessArg arg
           -- Otherwise, backslashes remain as is
           [] -> replicate bsCount '\\'
           (c:cs) -> replicate bsCount '\\' ++ c : escape cs endsWithQuote
+
+-- | There is also a special escaping scheme you need to using when passing args
+-- to a batch file (.bat or .cmd), in order to avoid the BatBadBut vulnerability.
+--
+-- https://flatt.tech/research/posts/batbadbut-you-cant-securely-execute-commands-on-windows/
+-- https://github.com/haskell/security-advisories/blob/0ca84023348231a44fac0ee943cca5437ef711a5/advisories/hackage/process/HSEC-2024-0003.md
+--
+-- The code below follows the escaping algorithm described in the first link.
+escapeCreateProcessArgForCmd :: String -> String
+escapeCreateProcessArgForCmd arg = escape $ escapeCreateProcessArg arg
+  where
+    escape ('(':xs) = '^' : '(' : escape xs
+    escape (')':xs) = '^' : ')' : escape xs
+    escape ('%':xs) = '^' : '%' : escape xs
+    escape ('!':xs) = '^' : '!' : escape xs
+    escape ('^':xs) = '^' : '^' : escape xs
+    escape ('"':xs) = '^' : '"' : escape xs
+    escape ('<':xs) = '^' : '<' : escape xs
+    escape ('>':xs) = '^' : '>' : escape xs
+    escape ('&':xs) = '^' : '&' : escape xs
+    escape ('|':xs) = '^' : '|' : escape xs
+    escape (x:xs) = x : escape xs
+    escape [] = []
+
+  -- | not (needsQuoting arg) = arg
+  -- | otherwise = "\"" ++ escape arg ++ "\""
+  -- where
+  --   -- Check if an argument needs quoting
+  --   needsQuoting :: String -> Bool
+  --   needsQuoting s = null s || any (`elem` specialChars) s
+
+  --   specialChars :: [Char]
+  --   specialChars = [' ', '\t', '"', '\'', '(', ')', '<', '>', '&', '|', '^', '%']
+
+  --   escape :: String -> String
+  --   -- Replace percent sign (%) with %%cd:~,%.
+  --   escape ('%':xs) = "%%cd:~,%" ++ escape xs
+  --   -- Replace the backslash (\) in front of the double quote (") with two backslashes (\\).
+  --   escape ('\\':xs@('"':_)) = '\\' : '\\' : escape xs
+  --   -- Replace the double quote (") with two double quotes ("").
+  --   escape ('"':xs) = '"' : '"' : escape xs
+  --   -- Remove newline characters (\n).
+  --   escape ('\n':xs) = escape xs
+  --   -- All other characters are passed through normally
+  --   escape (c:xs) = c : escape xs
+  --   escape [] = []

@@ -42,9 +42,12 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
+    - filepath
+    - process
     - process-escape-windows
     - sandwich
     - sandwich-quickcheck
     - string-interpolate
+    - text
     - unliftio
     - QuickCheck
