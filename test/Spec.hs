@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -7,7 +8,6 @@
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.String.Interpolate
-import Lib
 import Test.QuickCheck
 import Test.Sandwich
 import Test.Sandwich.QuickCheck
@@ -18,16 +18,16 @@ import TestLib.Props
 tests :: TopSpec
 tests = introduceQuickCheck' (stdArgs { maxSuccess = 1000 }) $ do
   describe "foo.exe <args> (tested using CommandLineToArgvW)" $ do
-    runTests (executableAndArgsWork' "foo.exe") (executableAndArgsWork "foo.exe")
+    runTests (executableAndArgsWork "foo.exe")
 
   describe "foo.exe <args> for OLD VERSION from System.Process (tested using CommandLineToArgvW)" $ do
-    runTests (executableAndArgsWorkUsingOldFunction' "foo.exe") (executableAndArgsWorkUsingOldFunction "foo.exe")
+    runTests (executableAndArgsWorkUsingOldFunction "foo.exe")
 
   describe "cmd.exe /c child.exe <args> (tested with (readCreateProcessWithExitCode (shell (...))))" $ do
-    runTests argsWorkUsingCmdExeWithCProgram' argsWorkUsingCmdExeWithCProgram
+    runTests argsWorkUsingCmdExeWithCProgram
 
   describe "cmd.exe /c child.bat <args> (tested with (readCreateProcessWithExitCode (shell (...))))" $ do
-    runTests argsWorkUsingCmdExeWithBatchFile' argsWorkUsingCmdExeWithBatchFile
+    runTests argsWorkUsingCmdExeWithBatchFile
 
   describe "escapeCreateProcessArg0 cases" $ do
     let testArg0Cases :: [String]
@@ -36,22 +36,22 @@ tests = introduceQuickCheck' (stdArgs { maxSuccess = 1000 }) $ do
           ]
 
     forM_ testArg0Cases $ \exe -> do
-      it exe $ liftIO $ executableAndArgsWork' exe []
+      it exe $ liftIO $ executableAndArgsWork exe []
 
   describe "<random exe name> <args> (tested using CommandLineToArgvW)" $ do
     prop "Executable only (strings without forbidden path chars)" $
-      forAll stringWithoutInvalidWindowsPathChars (\x -> executableAndArgsWork x [])
+      forAll stringWithoutInvalidWindowsPathChars (\x -> ioProperty $ executableAndArgsWork x [])
 
     prop "Executable + test string args (weighted towards special chars, backslashes, quotes)" $
       forAll stringWithoutInvalidWindowsPathChars $ \exe ->
         forAll (listOf1 genTestString) $ \args ->
-          executableAndArgsWork exe args
+          ioProperty $ executableAndArgsWork exe args
 
     prop "Executable + arbitrary args" $ forAll stringWithoutInvalidWindowsPathChars $ \exe ->
       forAll (listOf1 stringWithoutInvalidWindowsPathChars) $ \args ->
-        executableAndArgsWork exe args
+        ioProperty $ executableAndArgsWork exe args
 
-runTests ioCheck propCheck = do
+runTests ioCheck = do
   it "single arg cases" $ do
     let testArgCases :: [String]
         testArgCases = [
@@ -82,12 +82,12 @@ runTests ioCheck propCheck = do
     liftIO $ ioCheck ["\"&calc.exe"]
 
   describe "Test strings (weighted towards special chars, backslashes, quotes)" $ do
-    prop "single argument" $ forAll genTestString (\x -> propCheck [x])
-    prop "multi argument" $ forAll (listOf1 genTestString) (\xs -> propCheck xs)
+    prop "single argument" $ forAll genTestString (\x -> ioProperty $ ioCheck [x])
+    prop "multi argument" $ forAll (listOf1 genTestString) (\xs -> ioProperty $ ioCheck xs)
 
   describe "Arbitrary strings" $ do
-    prop "single argument" $ forAll stringWithoutNulls (\x -> propCheck [x])
-    prop "multi argument" $ forAll (listOf1 stringWithoutNulls) (\xs -> propCheck xs)
+    prop "single argument" $ forAll stringWithoutNulls (\x -> ioProperty $ ioCheck [x])
+    prop "multi argument" $ forAll (listOf1 stringWithoutNulls) (\xs -> ioProperty $ ioCheck xs)
 
 
 main :: IO ()

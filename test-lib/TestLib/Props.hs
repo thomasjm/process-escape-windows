@@ -1,23 +1,20 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module TestLib.Props (
   commandLineToArgvW
 
   , executableAndArgsWork
-  , executableAndArgsWork'
 
   , stringWithoutNulls
   , stringWithoutInvalidWindowsPathChars
 
   , argsWorkUsingCmdExeWithCProgram
-  , argsWorkUsingCmdExeWithCProgram'
 
   , argsWorkUsingCmdExeWithBatchFile
-  , argsWorkUsingCmdExeWithBatchFile'
 
   , executableAndArgsWorkUsingOldFunction
-  , executableAndArgsWorkUsingOldFunction'
   ) where
 
 import Control.Monad
@@ -56,15 +53,12 @@ commandLineToArgvW cmdLine = do
       numArgs <- peek pNumArgs
       peekArray numArgs argsPtr >>= mapM peekTString
 
-executableAndArgsWork' :: String -> [String] -> IO ()
-executableAndArgsWork' executable args = do
+executableAndArgsWork :: String -> [String] -> IO ()
+executableAndArgsWork executable args = do
   let quoted = escapeCmdAndArgs executable args
   commandLineToArgvW quoted >>= \case
     (exe:rest) | exe == executable && rest == args -> return ()
     xs -> expectationFailure [i|#{executable} #{args} -> #{quoted} -> #{xs}|]
-
-executableAndArgsWork :: String -> [String] -> Property
-executableAndArgsWork executable args = ioProperty $ executableAndArgsWork' executable args
 
 stringWithoutNulls :: Gen String
 stringWithoutNulls = listOf validChar
@@ -81,17 +75,11 @@ stringWithoutInvalidWindowsPathChars = listOf1 validChar
       x `elem` ['<', '>', ':', '"', '/', '\\', '|', '?', '*'] -- printable
       || (ord x >= 0 && ord x <= 31) -- non-printable
 
-argsWorkUsingCmdExeWithCProgram :: [String] -> Property
-argsWorkUsingCmdExeWithCProgram = ioProperty . argsWorkUsingCmdExeWithCProgram'
+argsWorkUsingCmdExeWithCProgram :: [String] -> IO ()
+argsWorkUsingCmdExeWithCProgram = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.exe") escapeCreateProcessArgForCmdWithCProgram
 
-argsWorkUsingCmdExeWithCProgram' :: [String] -> IO ()
-argsWorkUsingCmdExeWithCProgram' = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.exe") escapeCreateProcessArgForCmdWithCProgram
-
-argsWorkUsingCmdExeWithBatchFile :: [String] -> Property
-argsWorkUsingCmdExeWithBatchFile = ioProperty . argsWorkUsingCmdExeWithBatchFile'
-
-argsWorkUsingCmdExeWithBatchFile' :: [String] -> IO ()
-argsWorkUsingCmdExeWithBatchFile' = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.bat") escapeCreateProcessArgForCmdWithBatchFile
+argsWorkUsingCmdExeWithBatchFile :: [String] -> IO ()
+argsWorkUsingCmdExeWithBatchFile = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.bat") escapeCreateProcessArgForCmdWithBatchFile
 
 argsWorkUsingCmd'' :: (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
 argsWorkUsingCmd'' getChildExe escapeArg args = do
@@ -99,22 +87,47 @@ argsWorkUsingCmd'' getChildExe escapeArg args = do
   let childExe = getChildExe cwd
   doesFileExist childExe >>= (`shouldBe` True)
 
-  (exitCode, sout, serr) <- readCreateProcessWithExitCode (shell (L.unwords (childExe : fmap escapeArg args))) ""
+  -- let s = "H\10747"
+  -- putStrLn [i|#{L.unwords (childExe : fmap escapeArg args)}|]
+
+  -- Debug method 1: using raw createProcess
+  -- let cp = (shell (L.unwords (childExe : fmap escapeArg args))) {
+  --       std_out = CreatePipe
+  --       , std_err = CreatePipe
+  --       }
+  -- (_, Just hout, Just herr, p) <- createProcess cp
+  -- hSetEncoding hout utf8
+  -- hSetEncoding herr utf8
+  -- exitCode <- waitForProcess p
+  -- sout <- hGetContents hout
+  -- serr <- hGetContents herr
+
+  -- Debug method 2: using process-extras readCreateProcessWithExitCode
+  -- (exitCode, soutBytes, serrBytes) <- PB.readCreateProcessWithExitCode (shell (L.unwords (childExe : fmap escapeArg args))) ""
+  -- putStrLn [i|sout bytes: #{soutBytes}|]
+  -- putStrLn "Raw bytes as octets:"
+  -- mapM_ (\word8 -> putStrLn [i|#{word8}  |]) (BSI.unpackBytes soutBytes)
+  -- putStrLn ""
+  -- let sout = decodeUtf8 soutBytes
+  -- let serr = B8.unpack serrBytes
+  -- putStrLn [i|sout: #{sout}|]
+
+  (exitCode, T.pack -> sout, serr) <- readCreateProcessWithExitCode (shell (L.unwords (childExe : fmap escapeArg args))) ""
+
   case exitCode of
     ExitSuccess -> return ()
     ExitFailure n -> expectationFailure [i|Process exited with code #{n}. Stdout: #{sout}. Stderr: #{serr}.|]
 
   let ls = sout
-         & T.pack
-         & T.splitOn "\n"
+         & T.splitOn "\n" -- Using normal readCreateProcessWithExitCode will convert Windows line endings to Unix
          & L.init -- Remove trailing newline
          & fmap T.unpack
   ls `shouldBe` args
 
 -- * Old version in System.Process
 
-executableAndArgsWorkUsingOldFunction' :: String -> [String] -> IO ()
-executableAndArgsWorkUsingOldFunction' executable args = do
+executableAndArgsWorkUsingOldFunction :: String -> [String] -> IO ()
+executableAndArgsWorkUsingOldFunction executable args = do
   let quoted = unwords (escapeCreateProcessArg0 executable : fmap translateInternal args)
   commandLineToArgvW quoted >>= \case
     (exe:rest) | exe == executable && rest == args -> return ()
@@ -127,9 +140,6 @@ executableAndArgsWorkUsingOldFunction' executable args = do
             escape '\\' (True,  str) = (True,  '\\' : '\\' : str)
             escape '\\' (False, str) = (False, '\\' : str)
             escape c    (_,     str) = (False, c : str)
-
-executableAndArgsWorkUsingOldFunction :: String -> [String] -> Property
-executableAndArgsWorkUsingOldFunction executable args = ioProperty $ executableAndArgsWorkUsingOldFunction' executable args
 
 -- * Util
 
