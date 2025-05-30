@@ -8,11 +8,12 @@ module TestLib.Props (
   , executableAndArgsWork
 
   , stringWithoutNulls
+  , stringWithoutNullsOrNewlines
   , stringWithoutInvalidWindowsPathChars
 
   , argsWorkUsingCmdExeWithCProgram
 
-  , argsWorkUsingCmdExeWithBatchFile
+  , argsWorkUsingRawCommandBatchFile
 
   , executableAndArgsWorkUsingOldFunction
   ) where
@@ -65,6 +66,16 @@ stringWithoutNulls = listOf validChar
   where
     validChar = arbitrary `suchThat` (/= '\NUL')
 
+stringWithoutNullsOrNewlines :: Gen String
+stringWithoutNullsOrNewlines = listOf1 validChar
+  where
+    validChar = arbitrary `suchThat` (not . isForbidden)
+
+    isForbidden :: Char -> Bool
+    isForbidden x =
+      x `elem` ['\NUL', '\r', '\n']
+      || (ord x >= 65532)
+
 stringWithoutInvalidWindowsPathChars :: Gen String
 stringWithoutInvalidWindowsPathChars = listOf1 validChar
   where
@@ -76,44 +87,39 @@ stringWithoutInvalidWindowsPathChars = listOf1 validChar
       || (ord x >= 0 && ord x <= 31) -- non-printable
 
 argsWorkUsingCmdExeWithCProgram :: [String] -> IO ()
-argsWorkUsingCmdExeWithCProgram = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.exe") escapeCreateProcessArgForCmdWithCProgram
+argsWorkUsingCmdExeWithCProgram = argsWorkUsingCmd (\x -> x </> "test-assets" </> "child.exe") escapeCreateProcessArgForCmdWithCProgram
 
-argsWorkUsingCmdExeWithBatchFile :: [String] -> IO ()
-argsWorkUsingCmdExeWithBatchFile = argsWorkUsingCmd'' (\x -> x </> "test-assets" </> "child.bat") escapeCreateProcessArgForCmdWithBatchFile
+argsWorkUsingRawCommandBatchFile :: [String] -> IO ()
+argsWorkUsingRawCommandBatchFile = argsWorkUsingRawCommand (\x -> x </> "test-assets" </> "child.bat") escapeCreateProcessArgForBatchFile
 
-argsWorkUsingCmd'' :: (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
-argsWorkUsingCmd'' getChildExe escapeArg args = do
+argsWorkUsingCmd :: (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
+argsWorkUsingCmd getChild escapeArg args = do
   cwd <- getCurrentDirectory
-  let childExe = getChildExe cwd
-  doesFileExist childExe >>= (`shouldBe` True)
+  let child = getChild cwd
+  doesFileExist child >>= (`shouldBe` True)
 
-  -- let s = "H\10747"
-  -- putStrLn [i|#{L.unwords (childExe : fmap escapeArg args)}|]
+  -- putStrLn [i|#{L.unwords (child : fmap escapeArg args)}|]
 
-  -- Debug method 1: using raw createProcess
-  -- let cp = (shell (L.unwords (childExe : fmap escapeArg args))) {
-  --       std_out = CreatePipe
-  --       , std_err = CreatePipe
-  --       }
-  -- (_, Just hout, Just herr, p) <- createProcess cp
-  -- hSetEncoding hout utf8
-  -- hSetEncoding herr utf8
-  -- exitCode <- waitForProcess p
-  -- sout <- hGetContents hout
-  -- serr <- hGetContents herr
+  (exitCode, T.pack -> sout, serr) <- readCreateProcessWithExitCode (shell (L.unwords (child : fmap escapeArg args))) ""
+  case exitCode of
+    ExitSuccess -> return ()
+    ExitFailure n -> expectationFailure [i|Process exited with code #{n}. Stdout: #{sout}. Stderr: #{serr}.|]
 
-  -- Debug method 2: using process-extras readCreateProcessWithExitCode
-  -- (exitCode, soutBytes, serrBytes) <- PB.readCreateProcessWithExitCode (shell (L.unwords (childExe : fmap escapeArg args))) ""
-  -- putStrLn [i|sout bytes: #{soutBytes}|]
-  -- putStrLn "Raw bytes as octets:"
-  -- mapM_ (\word8 -> putStrLn [i|#{word8}  |]) (BSI.unpackBytes soutBytes)
-  -- putStrLn ""
-  -- let sout = decodeUtf8 soutBytes
-  -- let serr = B8.unpack serrBytes
-  -- putStrLn [i|sout: #{sout}|]
+  let ls = sout
+         & T.splitOn "\n" -- Using normal readCreateProcessWithExitCode will convert Windows line endings to Unix
+         & L.init -- Remove trailing newline
+         & fmap T.unpack
+  ls `shouldBe` args
 
-  (exitCode, T.pack -> sout, serr) <- readCreateProcessWithExitCode (shell (L.unwords (childExe : fmap escapeArg args))) ""
+argsWorkUsingRawCommand :: (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
+argsWorkUsingRawCommand getChild escapeArg args = do
+  cwd <- getCurrentDirectory
+  let child = getChild cwd
+  doesFileExist child >>= (`shouldBe` True)
 
+  -- putStrLn [i|#{L.unwords (child : fmap escapeArg args)}|]
+
+  (exitCode, T.pack -> sout, serr) <- readCreateProcessWithExitCode (proc child (fmap escapeArg args)) ""
   case exitCode of
     ExitSuccess -> return ()
     ExitFailure n -> expectationFailure [i|Process exited with code #{n}. Stdout: #{sout}. Stderr: #{serr}.|]

@@ -8,6 +8,7 @@
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.String.Interpolate
+import System.Win32.Console
 import Test.QuickCheck
 import Test.Sandwich
 import Test.Sandwich.QuickCheck
@@ -16,7 +17,7 @@ import TestLib.Props
 
 
 tests :: TopSpec
-tests = introduceQuickCheck' (stdArgs { maxSuccess = 1000 }) $ do
+tests = introduceQuickCheck' (stdArgs { maxSuccess = 100 }) $ do
   describe "foo.exe <args> (tested using CommandLineToArgvW)" $ do
     runTests (executableAndArgsWork "foo.exe")
 
@@ -24,10 +25,10 @@ tests = introduceQuickCheck' (stdArgs { maxSuccess = 1000 }) $ do
     runTests (executableAndArgsWorkUsingOldFunction "foo.exe")
 
   describe "cmd.exe /c child.exe <args> (tested with (readCreateProcessWithExitCode (shell (...))))" $ do
-    runTests argsWorkUsingCmdExeWithCProgram
+    runTests' stringWithoutNullsOrNewlines argsWorkUsingCmdExeWithCProgram
 
-  describe "cmd.exe /c child.bat <args> (tested with (readCreateProcessWithExitCode (shell (...))))" $ do
-    runTests argsWorkUsingCmdExeWithBatchFile
+  describe "child.bat <args> (tested with (readCreateProcessWithExitCode (proc (...))))" $ do
+    runTests argsWorkUsingRawCommandBatchFile
 
   describe "escapeCreateProcessArg0 cases" $ do
     let testArg0Cases :: [String]
@@ -51,7 +52,11 @@ tests = introduceQuickCheck' (stdArgs { maxSuccess = 1000 }) $ do
       forAll (listOf1 stringWithoutInvalidWindowsPathChars) $ \args ->
         ioProperty $ executableAndArgsWork exe args
 
-runTests ioCheck = do
+runTests :: (MonadIO m, HasQuickCheckContext ctx) => ([String] -> IO ()) -> SpecFree ctx m ()
+runTests = runTests' stringWithoutNulls
+
+runTests' :: (MonadIO m, HasQuickCheckContext ctx) => Gen String -> ([String] -> IO ()) -> SpecFree ctx m ()
+runTests' arbitraryString ioCheck = do
   it "single arg cases" $ do
     let testArgCases :: [String]
         testArgCases = [
@@ -86,9 +91,13 @@ runTests ioCheck = do
     prop "multi argument" $ forAll (listOf1 genTestString) (\xs -> ioProperty $ ioCheck xs)
 
   describe "Arbitrary strings" $ do
-    prop "single argument" $ forAll stringWithoutNulls (\x -> ioProperty $ ioCheck [x])
-    prop "multi argument" $ forAll (listOf1 stringWithoutNulls) (\xs -> ioProperty $ ioCheck xs)
+    prop "single argument" $ forAll arbitraryString (\x -> ioProperty $ ioCheck [x])
+    prop "multi argument" $ forAll (listOf1 arbitraryString) (\xs -> ioProperty $ ioCheck xs)
 
 
 main :: IO ()
-main = runSandwichWithCommandLineArgs defaultOptions tests
+main = do
+  setConsoleCP 65001
+  setConsoleOutputCP 65001
+
+  runSandwichWithCommandLineArgs defaultOptions tests

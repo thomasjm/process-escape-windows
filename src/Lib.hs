@@ -2,7 +2,7 @@ module Lib (
   escapeCreateProcessArg0
   , escapeCreateProcessArg
   , escapeCreateProcessArgForCmdWithCProgram
-  , escapeCreateProcessArgForCmdWithBatchFile
+  , escapeCreateProcessArgForBatchFile
   ) where
 
 
@@ -60,6 +60,9 @@ escapeCreateProcessArg arg
           [] -> replicate bsCount '\\'
           (c:cs) -> replicate bsCount '\\' ++ c : escape cs endsWithQuote
 
+escapeCreateProcessArgForCmdWithCProgram :: String -> String
+escapeCreateProcessArgForCmdWithCProgram = escapeForCmd . escapeCreateProcessArg
+
 -- | There is also a special escaping scheme you need to using when passing args
 -- to a batch file (.bat or .cmd), in order to avoid the BatBadBut vulnerability.
 --
@@ -67,15 +70,13 @@ escapeCreateProcessArg arg
 -- https://github.com/haskell/security-advisories/blob/0ca84023348231a44fac0ee943cca5437ef711a5/advisories/hackage/process/HSEC-2024-0003.md
 -- https://learn.microsoft.com/en-us/archive/blogs/twistylittlepassagesallalike/everyone-quotes-command-line-arguments-the-wrong-way
 --
--- The code below follows the escaping algorithm described in the first link.
-escapeCreateProcessArgForCmdWithCProgram :: String -> String
-escapeCreateProcessArgForCmdWithCProgram = escapeForCmd . escapeCreateProcessArg
-
-
-escapeCreateProcessArgForCmdWithBatchFile :: String -> String
-escapeCreateProcessArgForCmdWithBatchFile = doubleQuote . escapeForCmd
+-- The code below follows the escaping algorithm described in the first link TODOescapeCreateProcessArgForCmdWithBatchFile :: String -> String
+escapeCreateProcessArgForBatchFile :: String -> String
+escapeCreateProcessArgForBatchFile "" = "\"\""
+escapeCreateProcessArgForBatchFile x = quoteIfHasSpaces $ escapeForCmd x
   where
-    doubleQuote s = "\"" <> s <> "\""
+    quoteIfHasSpaces y = if hasWhitespace y then "\"" ++ y ++ "\"" else y
+    hasWhitespace = any (`elem` " \t")
 
 escapeForCmd :: String -> String
 escapeForCmd = go
@@ -90,5 +91,7 @@ escapeForCmd = go
     go ('>':xs) = '^' : '>' : go xs
     go ('&':xs) = '^' : '&' : go xs
     go ('|':xs) = '^' : '|' : go xs
+    -- go ('\r':xs) = '^' : '\r' : go xs
+    -- go ('\n':xs) = '^' : '\n' : go xs
     go (x:xs) = x : go xs
     go [] = []
