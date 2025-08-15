@@ -57,7 +57,7 @@ runTests = runTests' stringWithoutNulls
 
 runTests' :: (MonadIO m, HasQuickCheckContext ctx) => Gen String -> ([String] -> IO ()) -> SpecFree ctx m ()
 runTests' arbitraryString ioCheck = do
-  it "single arg cases" $ do
+  describe "single arg cases" $ do
     let testArgCases :: [String]
         testArgCases = [
           ""                          -- Empty string
@@ -77,7 +77,8 @@ runTests' arbitraryString ioCheck = do
           ]
 
     forM_ testArgCases $ \arg -> do
-      liftIO $ ioCheck [arg]
+      it [i|#{arg}|] $
+        liftIO $ ioCheck [arg]
 
   it "multi arg cases" $ do
     liftIO $ ioCheck ["a", "b"]

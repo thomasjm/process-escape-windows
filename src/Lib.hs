@@ -70,13 +70,24 @@ escapeCreateProcessArgForCmdWithCProgram = escapeForCmd . escapeCreateProcessArg
 -- https://github.com/haskell/security-advisories/blob/0ca84023348231a44fac0ee943cca5437ef711a5/advisories/hackage/process/HSEC-2024-0003.md
 -- https://learn.microsoft.com/en-us/archive/blogs/twistylittlepassagesallalike/everyone-quotes-command-line-arguments-the-wrong-way
 --
--- The code below follows the escaping algorithm described in the first link TODOescapeCreateProcessArgForCmdWithBatchFile :: String -> String
+-- The code below follows the escaping algorithm described in the first link
 escapeCreateProcessArgForBatchFile :: String -> String
 escapeCreateProcessArgForBatchFile "" = "\"\""
-escapeCreateProcessArgForBatchFile x = quoteIfHasSpaces $ escapeForCmd x
+escapeCreateProcessArgForBatchFile x = quote $ escapeForCmd' x
   where
+    quote y = "\"" ++ y ++ "\""
+
     quoteIfHasSpaces y = if hasWhitespace y then "\"" ++ y ++ "\"" else y
     hasWhitespace = any (`elem` " \t")
+
+    escapeForCmd' = go'
+
+    go' ('%':xs) =  '%' : '%' : 'c' : 'd' : ':' : '~' : ',' : '%' : go' xs
+    go' ('\\':'"':xs) = '\\' : '\\' : go' ('"' : xs)
+    go' ('"':xs) = '"' : '"' : go' xs
+    go' (y:ys) = y : go' ys
+    go' [] = []
+
 
 escapeForCmd :: String -> String
 escapeForCmd = go

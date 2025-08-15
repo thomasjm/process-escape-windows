@@ -89,8 +89,36 @@ stringWithoutInvalidWindowsPathChars = listOf1 validChar
 argsWorkUsingCmdExeWithCProgram :: [String] -> IO ()
 argsWorkUsingCmdExeWithCProgram = argsWorkUsingCmd (\x -> x </> "test-assets" </> "child.exe") escapeCreateProcessArgForCmdWithCProgram
 
+argsWorkUsingCmdExeWithBatFile :: (FilePath -> FilePath) -> (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
+argsWorkUsingCmdExeWithBatFile getChildBat getBatFile escapeArg args = do
+  cwd <- getCurrentDirectory
+  let childBat = getChildBat cwd
+  let batFile = getBatFile cwd
+  doesFileExist childBat >>= (`shouldBe` True)
+  doesFileExist batFile >>= (`shouldBe` True)
+
+  let shellCmd = L.unwords (childBat : batFile : fmap escapeArg args)
+  -- putStrLn [i|SHELL COMMAND: #{shellCmd}|]
+
+  (exitCode, T.pack -> sout, serr) <- readCreateProcessWithExitCode (shell shellCmd) ""
+  case exitCode of
+    ExitSuccess -> return ()
+    ExitFailure n -> expectationFailure [i|Process exited with code #{n}. Stdout: #{sout}. Stderr: #{serr}.|]
+
+  -- putStrLn [i|STDERR: #{serr}|]
+
+  let ls = sout
+         & T.splitOn "\n" -- Using normal readCreateProcessWithExitCode will convert Windows line endings to Unix
+         & L.init -- Remove trailing newline
+         & fmap T.unpack
+  ls `shouldBe` args
+
 argsWorkUsingRawCommandBatchFile :: [String] -> IO ()
-argsWorkUsingRawCommandBatchFile = argsWorkUsingRawCommand (\x -> x </> "test-assets" </> "child.bat") escapeCreateProcessArgForBatchFile
+argsWorkUsingRawCommandBatchFile = argsWorkUsingCmdExeWithBatFile getCWrapper getChildBat escapeArg
+  where
+    getCWrapper x = x </> "test-assets" </> "child-bat.exe"
+    getChildBat x = x </> "test-assets" </> "child.bat"
+    escapeArg = escapeCreateProcessArgForCmdWithCProgram . escapeCreateProcessArgForBatchFile
 
 argsWorkUsingCmd :: (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
 argsWorkUsingCmd getChild escapeArg args = do
@@ -101,25 +129,6 @@ argsWorkUsingCmd getChild escapeArg args = do
   -- putStrLn [i|#{L.unwords (child : fmap escapeArg args)}|]
 
   (exitCode, T.pack -> sout, serr) <- readCreateProcessWithExitCode (shell (L.unwords (child : fmap escapeArg args))) ""
-  case exitCode of
-    ExitSuccess -> return ()
-    ExitFailure n -> expectationFailure [i|Process exited with code #{n}. Stdout: #{sout}. Stderr: #{serr}.|]
-
-  let ls = sout
-         & T.splitOn "\n" -- Using normal readCreateProcessWithExitCode will convert Windows line endings to Unix
-         & L.init -- Remove trailing newline
-         & fmap T.unpack
-  ls `shouldBe` args
-
-argsWorkUsingRawCommand :: (FilePath -> FilePath) -> (String -> String) -> [String] -> IO ()
-argsWorkUsingRawCommand getChild escapeArg args = do
-  cwd <- getCurrentDirectory
-  let child = getChild cwd
-  doesFileExist child >>= (`shouldBe` True)
-
-  -- putStrLn [i|#{L.unwords (child : fmap escapeArg args)}|]
-
-  (exitCode, T.pack -> sout, serr) <- readCreateProcessWithExitCode (proc child (fmap escapeArg args)) ""
   case exitCode of
     ExitSuccess -> return ()
     ExitFailure n -> expectationFailure [i|Process exited with code #{n}. Stdout: #{sout}. Stderr: #{serr}.|]
